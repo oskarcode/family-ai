@@ -1,0 +1,23 @@
+docs/diagrams/index.html
+  s_ec2423071539bf::t_58ab94e14bb96f 1-413
+package-lock.json
+  s_ec2423071539bf::t_d747c800d04553 1-5543
+worker-configuration.ingest.d.ts
+  s_ec2423071539bf::t_36dff58de26b47 1-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4e92522e7002df1b15d5dffcb612991ae9b94fc1",
+  "prompts": {},
+  "sessions": {
+    "s_ec2423071539bf": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f01d4c7d7ffex3uJJ874tKRCqS",
+        "model": "gpt-5.6"
+      },
+      "human_author": "oskarcode <manaskarsanqu@gmail.com>"
+    }
+  }
+}
