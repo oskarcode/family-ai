@@ -1,0 +1,5 @@
+Family AI MCP ingestion fixture.
+Use case: small plain text file that should index directly.
+Token: FIXTURE_INDEXABLE_BASIC_20260629
+
+This file is intentionally tiny and should complete quickly.

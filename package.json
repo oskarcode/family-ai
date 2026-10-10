@@ -1,0 +1,37 @@
+{
+  "name": "family-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "plan:migration": "tsx src/scripts/generateMigrationPlan.ts",
+    "migrate:r2:dry": "tsx src/scripts/migrateToR2.ts",
+    "migrate:r2:apply": "tsx src/scripts/migrateToR2.ts --apply",
+    "test": "vitest run",
+    "report:upload-tracking": "tsx src/scripts/generateUploadTrackingReport.ts",
+    "report:indexing-status": "tsx src/scripts/generateIndexingStatusReport.ts",
+    "report:search-validation": "tsx src/scripts/generateSearchValidationReport.ts",
+    "report:failed-file-mapping": "tsx src/scripts/generateFailedFileMappingReport.ts",
+    "report:ops-status": "tsx src/scripts/generateOperationalStatusReport.ts",
+    "cleanup:taxonomy": "tsx src/scripts/cleanupLiveTaxonomy.ts",
+    "cleanup:taxonomy:apply": "tsx src/scripts/cleanupLiveTaxonomy.ts --apply",
+    "deploy:core": "wrangler deploy --config wrangler.jsonc",
+    "deploy:ingest": "wrangler deploy --config wrangler.ingest.jsonc"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.1",
+    "@aws-sdk/client-s3": "^3.888.0",
+    "agents": "^0.17.1",
+    "dotenv": "^16.6.1",
+    "hono": "^4.12.27",
+    "valibot": "^1.4.2",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.9",
+    "wrangler": "^4.27.0"
+  }
+}

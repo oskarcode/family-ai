@@ -1,0 +1,17 @@
+{
+  // Compiler policy type-checks modern Node-compatible TypeScript without emitting files.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
+  },
+  // Application TypeScript and generated Worker binding declarations form the checked project.
+  "include": ["src/**/*.ts", "worker-configuration.d.ts", "worker-configuration.ingest.d.ts"]
+}

@@ -1,0 +1,4 @@
+date,category,amount,note,token
+2026-06-29,financial,124.55,"grocery fixture",FIXTURE_INDEXABLE_CSV_20260629
+2026-06-29,home,45.00,"utility fixture",FIXTURE_INDEXABLE_CSV_20260629
+2026-06-30,medical,89.10,"pharmacy fixture",FIXTURE_INDEXABLE_CSV_20260629

@@ -1,0 +1,42 @@
+[
+  {
+    "query": "show my 2024 tax return package",
+    "expectedCategory": "financial"
+  },
+  {
+    "query": "what are my Cigna healthcare coverage documents",
+    "expectedCategory": "medical"
+  },
+  {
+    "query": "find green card and passport related files",
+    "expectedCategory": "immigration"
+  },
+  {
+    "query": "home inspection report and house hunting docs",
+    "expectedCategory": "home"
+  },
+  {
+    "query": "show mortgage application supporting files",
+    "expectedCategory": "financial"
+  },
+  {
+    "query": "find legal agreements and contracts",
+    "expectedCategory": "legal"
+  },
+  {
+    "query": "baby ultrasound and pregnancy test documents",
+    "expectedCategory": "medical"
+  },
+  {
+    "query": "show utility and home maintenance records",
+    "expectedCategory": "home"
+  },
+  {
+    "query": "find cloudflare benefits and employment docs",
+    "expectedCategory": "employment"
+  },
+  {
+    "query": "show relocation and customs shipment forms",
+    "expectedCategory": "travel"
+  }
+]

@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Worker identity and ingestion MCP entrypoint.
+  "name": "family-ai-ingest-mcp",
+  "main": "src/ingest-worker/index.ts",
+  // workers.dev exposes ingestion while preview URLs remain disabled.
+  "workers_dev": true,
+  "preview_urls": false,
+  // Runtime compatibility is pinned for repeatable deployments.
+  "compatibility_date": "2026-06-29",
+  "compatibility_flags": ["nodejs_compat"],
+  // Worker logs and traces support ingestion troubleshooting.
+  "observability": {
+    "enabled": true
+  },
+  // R2 bindings separate preserved originals from index-ready artifacts.
+  "r2_buckets": [
+    {
+      "binding": "R2_RAW",
+      "bucket_name": "family-raw"
+    },
+    {
+      "binding": "R2_INDEX_READY",
+      "bucket_name": "family-index-ready-v3"
+    }
+  ],
+  // Public identifiers configure the target environment and AI Search instance.
+  "vars": {
+    "APP_ENV": "dev",
+    "CLOUDFLARE_ACCOUNT_ID": "f2b0debf4bd2bf50f7d1a81d1ab88946",
+    "AI_SEARCH_INSTANCE_ID": "family-ai-chat-v3",
+    "AI_SEARCH_NAMESPACE": "default"
+  }
+  // Credentials and signing material are secrets injected outside this file.
+}

@@ -1,0 +1,26 @@
+# Keep local secrets out of version control while retaining the safe template.
+.env
+.env.*
+!.env.example
+
+# Ignore downloaded dependencies and local Wrangler state.
+node_modules/
+.wrangler/
+
+# Keep private family notes, chat transcripts, and generated reports local-only.
+data/
+outputs/
+*_chat_session.md
+newhome.md
+family_ai_planning.md
+
+# Do not vendor the separate FamilyOS / Cloudflare OS checkout into this repo.
+family-os/
+
+# Local interactive learning guides stay on this machine by default.
+docs/*-learning-guide.html
+docs/learning-agent/
+
+# Ignore operating-system metadata and transient logs.
+.DS_Store
+*.log
