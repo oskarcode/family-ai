@@ -1,263 +1,75 @@
 {
-  "project": "family-ai",
-  "provenance": { "git_sha": "HEAD" },
+  "project": "Family AI",
   "scenarios": [
     {
-      "id": "upload-flow",
-      "title": "Document Upload Flow",
-      "subtitle": "HTTP API → validation → storage → indexing",
-      "meta": { "created": "2026-08-14", "updated": "2026-08-14" },
+      "id": "mcp-search",
+      "title": "MCP search over family documents",
+      "subtitle": "MCP client → Worker tool → AI Search binding → ranked chunks",
+      "meta": { "created": "2026-10-14", "updated": "2026-10-14", "status": "verified" },
+      "source_paths": ["src/ingest-worker/index.ts", "src/ingest-worker/server.ts", "src/ingest-worker/search.ts", "wrangler.ingest.jsonc"],
       "actors": [
-        { "id": "user", "label": "User", "zone": "user" },
-        { "id": "client", "label": "Web Client", "zone": "frontend" },
-        { "id": "core", "label": "family-ai-core", "zone": "server", "sub_caption": "Hono API" },
-        { "id": "policy", "label": "Policy Engine", "zone": "server", "sub_caption": "src/config" },
-        { "id": "r2raw", "label": "R2 Raw", "zone": "external", "kind": "internal", "sub_caption": "family-raw" },
-        { "id": "r2idx", "label": "R2 Index", "zone": "external", "kind": "internal", "sub_caption": "family-index-ready" },
-        { "id": "d1", "label": "D1", "zone": "external", "kind": "internal", "sub_caption": "documents" },
-        { "id": "queue", "label": "Queue", "zone": "external", "kind": "internal", "sub_caption": "processing" }
+        { "id": "client", "label": "MCP Client", "zone": "client", "sub_caption": "ChatGPT / Pi / Portal" },
+        { "id": "worker", "label": "Family AI Worker", "zone": "server", "sub": [
+          { "id": "entry", "label": "/mcp" },
+          { "id": "tools", "label": "Tools" },
+          { "id": "search", "label": "Search" }
+        ] },
+        { "id": "r2", "label": "R2", "zone": "external", "sub": [
+          { "id": "raw", "label": "family-raw" },
+          { "id": "legacy", "label": "index-ready" }
+        ] },
+        { "id": "ais", "label": "AI Search", "zone": "external", "sub_caption": "family-ai-chat-v3" }
       ],
       "messages": [
-        { "phase": "PREVIEW" },
-        { "from": "user", "to": "client", "text": "select file + metadata", "caption": "category, year, person" },
-        { "from": "client", "to": "core", "text": "POST /api/uploader/preview", "via": "api", "paths": ["upload"] },
-        { "self": "core", "text": "readUploadInput", "caption": "parse multipart/JSON" },
-        { "from": "core", "to": "policy", "text": "decideProcessingStatus", "via": "api", "paths": ["upload"], "src": "uploaderApi.ts → policy.ts" },
-        { "from": "policy", "to": "core", "text": "policy result", "kind": "ret", "paths": ["upload"], "caption": "store | index | invalid" },
-        { "self": "core", "text": "buildIndexObject", "caption": "direct | converted | skipped" },
-        { "from": "core", "to": "client", "text": "preview response", "kind": "ret", "via": "api", "paths": ["upload"], "caption": "would_index, raw_key, index_key" },
-        { "phase": "SAVE" },
-        { "from": "user", "to": "client", "text": "confirm upload" },
-        { "from": "client", "to": "core", "text": "POST /api/uploader/save", "via": "api", "paths": ["upload"] },
-        { "self": "core", "text": "buildUploadPlan", "caption": "checksum + policy + indexing" },
-        { "from": "core", "to": "r2raw", "text": "PUT raw bytes", "via": "io", "paths": ["upload"], "src": "uploaderApi.ts → R2" },
-        { "from": "core", "to": "r2idx", "text": "PUT index object", "via": "io", "paths": ["upload"], "caption": "if indexing approved", "src": "uploaderApi.ts → R2" },
-        { "from": "core", "to": "d1", "text": "INSERT document + version", "via": "io", "paths": ["upload"], "src": "uploaderApi.ts → D1" },
-        { "from": "core", "to": "queue", "text": "send processing job", "kind": "async", "via": "api", "paths": ["upload"], "caption": "index_ready | post_upload" },
-        { "from": "core", "to": "client", "text": "201 Created", "kind": "ret", "via": "api", "paths": ["upload"], "caption": "doc_id, version_id, status" }
+        { "phase": "REQUEST" },
+        { "from": "client", "to": "worker.entry", "text": "POST /mcp", "caption": "tools/call search", "via": "api", "paths": ["search"], "src": "src/ingest-worker/index.ts" },
+        { "self": "worker.entry", "text": "check Access", "caption": "optional service token" },
+        { "from": "worker.entry", "to": "worker.tools", "text": "dispatch tool", "caption": "createUnifiedServer", "src": "src/ingest-worker/server.ts" },
+        { "from": "worker.tools", "to": "worker.search", "text": "searchFamilyDocuments", "caption": "query + options", "src": "src/ingest-worker/server.ts → search.ts" },
+        { "phase": "RETRIEVE" },
+        { "from": "worker.search", "to": "ais", "text": "AI_SEARCH.search", "caption": "binding call", "via": "api", "paths": ["search"], "src": "src/ingest-worker/search.ts" },
+        { "from": "ais", "to": "worker.search", "text": "ranked chunks", "kind": "ret" },
+        { "from": "worker.search", "to": "r2.legacy", "text": "legacy prefix", "caption": "only when source_prefixes", "via": "io", "paths": ["prefix"] },
+        { "from": "worker.search", "to": "worker.tools", "text": "structured result", "kind": "ret" },
+        { "from": "worker.tools", "to": "client", "text": "tool response", "caption": "structuredContent", "kind": "ret" }
       ],
       "fragments": [
-        { "kind": "opt", "label": "indexing approved", "range": [10, 11] }
+        { "kind": "opt", "label": "source_prefixes supplied", "range": [7, 8] }
       ]
     },
     {
-      "id": "mcp-ingest-flow",
-      "title": "MCP Ingestion Flow",
-      "subtitle": "Two-step validation → upload with AI Search indexing",
-      "meta": { "created": "2026-08-14", "updated": "2026-08-14" },
+      "id": "mcp-ingest-delete",
+      "title": "Ingest and delete a family document",
+      "subtitle": "preserve original in R2, index in AI Search built-in storage, clean both on delete",
+      "meta": { "created": "2026-10-14", "updated": "2026-10-14", "status": "verified" },
+      "source_paths": ["src/ingest-worker/ingestion.ts", "src/ingest-worker/deletion.ts", "src/ingest-worker/cloudflare-api.ts"],
       "actors": [
-        { "id": "mcpclient", "label": "MCP Client", "zone": "frontend" },
-        { "id": "mcp", "label": "family-ai-mcp", "zone": "server", "sub_caption": "MCP Server" },
-        { "id": "validate", "label": "Validation", "zone": "server", "sub_caption": "ingestion.ts" },
-        { "id": "upload", "label": "Upload + Index", "zone": "server", "sub_caption": "ingestion.ts" },
-        { "id": "r2raw", "label": "R2 Raw", "zone": "external", "kind": "internal", "sub_caption": "family-raw" },
-        { "id": "r2idx", "label": "R2 Index", "zone": "external", "kind": "internal", "sub_caption": "family-index-ready" },
-        { "id": "aisearch", "label": "AI Search", "zone": "external", "sub_caption": "Cloudflare" },
-        { "id": "convert", "label": "ToMarkdown API", "zone": "external", "sub_caption": "Cloudflare" }
+        { "id": "client", "label": "MCP Client", "zone": "client", "sub_caption": "upload/delete tools" },
+        { "id": "worker", "label": "Family AI Worker", "zone": "server", "sub": [
+          { "id": "tools", "label": "Tools" },
+          { "id": "ingest", "label": "Ingestion" },
+          { "id": "delete", "label": "Deletion" }
+        ] },
+        { "id": "r2", "label": "R2 Raw", "zone": "external", "sub_caption": "family-raw" },
+        { "id": "ais", "label": "AI Search", "zone": "external", "sub_caption": "built-in storage" }
       ],
       "messages": [
-        { "phase": "VALIDATE" },
-        { "from": "mcpclient", "to": "mcp", "text": "ingest_validate_file", "via": "api", "paths": ["mcp-ingest"], "caption": "filename, size, optional base64" },
-        { "self": "mcp", "text": "createUnifiedServer", "caption": "McpServer tool dispatch" },
-        { "from": "mcp", "to": "validate", "text": "validateFile", "via": "api", "paths": ["mcp-ingest"], "src": "server.ts → ingestion.ts" },
-        { "self": "validate", "text": "check format support", "caption": "extension allowlist + size limits" },
-        { "from": "validate", "to": "aisearch", "text": "GET /tomarkdown/supported", "via": "api", "paths": ["mcp-ingest"], "src": "ingestion.ts → cloudflare-api.ts", "caption": "cached 15min" },
-        { "from": "aisearch", "to": "validate", "text": "supported formats", "kind": "ret", "via": "api", "paths": ["mcp-ingest"] },
-        { "from": "validate", "to": "mcp", "text": "validation result", "kind": "ret", "via": "api", "paths": ["mcp-ingest"], "caption": "validation_id (signed JWT-like)" },
-        { "from": "mcp", "to": "mcpclient", "text": "tool response", "kind": "ret", "via": "api", "paths": ["mcp-ingest"] },
-        { "phase": "UPLOAD" },
-        { "from": "mcpclient", "to": "mcp", "text": "ingest_upload_validated_file", "via": "api", "paths": ["mcp-ingest"], "caption": "token + base64 + metadata" },
-        { "from": "mcp", "to": "upload", "text": "uploadAndIndex", "via": "api", "paths": ["mcp-ingest"], "src": "server.ts → ingestion.ts" },
-        { "self": "upload", "text": "verifyValidationId", "caption": "HMAC + expiry + metadata" },
-        { "from": "upload", "to": "r2raw", "text": "PUT original bytes", "via": "io", "paths": ["mcp-ingest"], "src": "ingestion.ts → R2" },
-        { "self": "upload", "text": "derive index artifacts", "caption": "direct | convert → split" },
-        { "from": "upload", "to": "convert", "text": "POST /tomarkdown", "via": "api", "paths": ["mcp-ingest"], "src": "ingestion.ts → cloudflare-api.ts", "caption": "binary → markdown", "detail": { "why": "Convert binary docs (PDF, DOCX) to searchable Markdown", "fails": "Returns empty text error; falls back to sync job" } },
-        { "from": "convert", "to": "upload", "text": "markdown result", "kind": "ret", "via": "api", "paths": ["mcp-ingest"] },
-        { "from": "upload", "to": "r2idx", "text": "PUT index chunks", "via": "io", "paths": ["mcp-ingest"], "caption": "part_NNN.md if split" },
-        { "from": "upload", "to": "aisearch", "text": "POST /items", "via": "api", "paths": ["mcp-ingest"], "caption": "direct upload if CF_API_TOKEN", "src": "cloudflare-api.ts → AI Search" },
-        { "from": "aisearch", "to": "upload", "text": "item id + status", "kind": "ret", "via": "api", "paths": ["mcp-ingest"] },
-        { "from": "upload", "to": "aisearch", "text": "POST /jobs", "kind": "async", "via": "api", "paths": ["mcp-ingest"], "caption": "trigger sync job fallback" },
-        { "from": "upload", "to": "mcp", "text": "upload result", "kind": "ret", "via": "api", "paths": ["mcp-ingest"], "caption": "raw_key + index_keys" },
-        { "from": "mcp", "to": "mcpclient", "text": "tool response", "kind": "ret", "via": "api", "paths": ["mcp-ingest"] }
+        { "phase": "INGEST" },
+        { "from": "client", "to": "worker.tools", "text": "call ingest", "caption": "file or markdown", "via": "api", "paths": ["ingest"] },
+        { "from": "worker.tools", "to": "worker.ingest", "text": "validate input", "caption": "filename, type, size" },
+        { "from": "worker.ingest", "to": "r2", "text": "put original", "caption": "canonical raw_key", "via": "io", "src": "src/ingest-worker/ingestion.ts" },
+        { "from": "worker.ingest", "to": "ais", "text": "items.upload", "caption": "metadata fields", "via": "api", "src": "src/ingest-worker/cloudflare-api.ts" },
+        { "from": "ais", "to": "worker.ingest", "text": "item id", "kind": "ret" },
+        { "from": "worker.tools", "to": "client", "text": "upload result", "caption": "raw_key + item id", "kind": "ret" },
+        { "phase": "DELETE" },
+        { "from": "client", "to": "worker.tools", "text": "delete_file", "caption": "confirm_delete true", "via": "api", "paths": ["delete"] },
+        { "from": "worker.tools", "to": "worker.delete", "text": "validate key", "caption": "safe path + prefix guard" },
+        { "from": "worker.delete", "to": "r2", "text": "delete object", "caption": "raw/index/both", "via": "io" },
+        { "from": "worker.delete", "to": "ais", "text": "find + delete item", "caption": "matching key", "via": "api" },
+        { "from": "worker.delete", "to": "client", "text": "delete summary", "caption": "objects + item count", "kind": "ret" }
       ],
       "fragments": [
-        { "kind": "opt", "label": "binary conversion needed", "range": [13, 15] },
-        { "kind": "opt", "label": "CF_API_TOKEN configured", "range": [16, 17] },
-        { "kind": "alt", "label": "upload mode", "range": [11, 18], "segments": [{ "guard": "direct text" }, { "guard": "convert binary" }] }
-      ]
-    },
-    {
-      "id": "chatgpt-file-ingest-flow",
-      "title": "ChatGPT File Ingest Flow",
-      "subtitle": "OpenAI file params → server-side download → shared indexing",
-      "meta": { "created": "2026-08-27", "updated": "2026-08-27" },
-      "actors": [
-        { "id": "chatgpt", "label": "ChatGPT", "zone": "frontend", "sub_caption": "file params" },
-        { "id": "files", "label": "OpenAI File URL", "zone": "external", "sub_caption": "temporary download" },
-        { "id": "mcp", "label": "family-ai-mcp", "zone": "server", "sub_caption": "MCP Server" },
-        { "id": "ingest", "label": "Upload + Index", "zone": "server", "sub_caption": "ingestion.ts" },
-        { "id": "r2raw", "label": "R2 Raw", "zone": "external", "kind": "internal", "sub_caption": "family-raw" },
-        { "id": "r2idx", "label": "R2 Index", "zone": "external", "kind": "internal", "sub_caption": "family-index-ready-v3" },
-        { "id": "aisearch", "label": "AI Search", "zone": "external", "sub_caption": "Cloudflare" }
-      ],
-      "messages": [
-        { "phase": "TOOL CALL" },
-        { "from": "chatgpt", "to": "mcp", "text": "ingest_chatgpt_file", "via": "api", "paths": ["chatgpt-file"], "caption": "file + metadata" },
-        { "from": "mcp", "to": "files", "text": "GET download_url", "via": "api", "paths": ["chatgpt-file"], "caption": "temporary HTTPS URL" },
-        { "from": "files", "to": "mcp", "text": "file bytes", "kind": "ret", "via": "api", "paths": ["chatgpt-file"], "caption": "10 MiB cap" },
-        { "from": "mcp", "to": "ingest", "text": "uploadBytesAndIndex", "via": "api", "paths": ["chatgpt-file"], "src": "server.ts -> ingestion.ts", "caption": "original_preserved: true" },
-        { "from": "ingest", "to": "r2raw", "text": "PUT original", "via": "io", "paths": ["chatgpt-file"], "caption": "family-raw key" },
-        { "from": "ingest", "to": "r2idx", "text": "PUT index chunks", "via": "io", "paths": ["chatgpt-file"], "caption": "direct or converted" },
-        { "from": "ingest", "to": "aisearch", "text": "POST /items", "via": "api", "paths": ["chatgpt-file"], "caption": "if CF_API_TOKEN" },
-        { "from": "aisearch", "to": "ingest", "text": "item id + status", "kind": "ret", "via": "api", "paths": ["chatgpt-file"] },
-        { "from": "ingest", "to": "mcp", "text": "upload result", "kind": "ret", "via": "api", "paths": ["chatgpt-file"], "caption": "raw_key + index_keys" },
-        { "from": "mcp", "to": "chatgpt", "text": "tool response", "kind": "ret", "via": "api", "paths": ["chatgpt-file"] }
-      ],
-      "fragments": [
-        { "kind": "critical", "label": "file URL valid", "range": [1, 3] },
-        { "kind": "opt", "label": "AI Search token configured", "range": [6, 7] }
-      ]
-    },
-    {
-      "id": "mcp-search-flow",
-      "title": "MCP Search Flow",
-      "subtitle": "Query family documents via AI Search or source-prefix retrieval",
-      "meta": { "created": "2026-08-14", "updated": "2026-08-14" },
-      "actors": [
-        { "id": "mcpclient", "label": "MCP Client", "zone": "frontend" },
-        { "id": "mcp", "label": "family-ai-mcp", "zone": "server", "sub_caption": "MCP Server" },
-        { "id": "search", "label": "Search Engine", "zone": "server", "sub_caption": "search.ts" },
-        { "id": "r2idx", "label": "R2 Index", "zone": "external", "kind": "internal", "sub_caption": "family-index-ready" },
-        { "id": "aisearch", "label": "AI Search", "zone": "external", "sub_caption": "Cloudflare" }
-      ],
-      "messages": [
-        { "phase": "SOURCE PREFIX" },
-        { "from": "mcpclient", "to": "mcp", "text": "search", "via": "api", "paths": ["mcp-search"], "caption": "source_prefixes provided" },
-        { "from": "mcp", "to": "search", "text": "searchFamilyDocuments", "via": "api", "paths": ["mcp-search"], "src": "server.ts → search.ts" },
-        { "from": "search", "to": "r2idx", "text": "list objects by prefix", "via": "io", "paths": ["mcp-search"], "caption": "max 50 chunks" },
-        { "from": "r2idx", "to": "search", "text": "object list + cursors", "kind": "ret", "via": "io", "paths": ["mcp-search"] },
-        { "from": "search", "to": "r2idx", "text": "GET text objects", "via": "io", "paths": ["mcp-search"], "caption": "text/json/md/csv/etc" },
-        { "from": "r2idx", "to": "search", "text": "file contents", "kind": "ret", "via": "io", "paths": ["mcp-search"] },
-        { "self": "search", "text": "splitText", "caption": "4K char chunks, paragraph-aware" },
-        { "from": "search", "to": "mcp", "text": "source prefix result", "kind": "ret", "via": "api", "paths": ["mcp-search"], "caption": "chunks with metadata" },
-        { "from": "mcp", "to": "mcpclient", "text": "tool response", "kind": "ret", "via": "api", "paths": ["mcp-search"] },
-        { "phase": "AI SEARCH" },
-        { "from": "mcpclient", "to": "mcp", "text": "search", "via": "api", "paths": ["mcp-search"], "caption": "query + ai_search_options" },
-        { "from": "mcp", "to": "search", "text": "searchFamilyDocuments", "via": "api", "paths": ["mcp-search"] },
-        { "from": "search", "to": "aisearch", "text": "POST /tools/call search", "via": "api", "paths": ["mcp-search"], "src": "search.ts → AI Search MCP", "caption": "jsonrpc 2.0" },
-        { "from": "aisearch", "to": "search", "text": "search result", "kind": "ret", "via": "api", "paths": ["mcp-search"], "caption": "SSE data: line" },
-        { "from": "search", "to": "mcp", "text": "parsed result", "kind": "ret", "via": "api", "paths": ["mcp-search"] },
-        { "from": "mcp", "to": "mcpclient", "text": "tool response", "kind": "ret", "via": "api", "paths": ["mcp-search"] }
-      ],
-      "fragments": [
-        { "kind": "alt", "label": "search mode", "range": [0, 14], "segments": [{ "guard": "source_prefixes" }, { "guard": "ai_search_options" }] }
-      ]
-    },
-    {
-      "id": "mcp-status-flow",
-      "title": "MCP Ingest Status Flow",
-      "subtitle": "Poll AI Search indexing status for submitted items",
-      "meta": { "created": "2026-08-14", "updated": "2026-08-14" },
-      "actors": [
-        { "id": "mcpclient", "label": "MCP Client", "zone": "frontend" },
-        { "id": "mcp", "label": "family-ai-mcp", "zone": "server", "sub_caption": "MCP Server" },
-        { "id": "aisearch", "label": "AI Search", "zone": "external", "sub_caption": "Cloudflare" }
-      ],
-      "messages": [
-        { "from": "mcpclient", "to": "mcp", "text": "ingest_status", "via": "api", "paths": ["mcp-status"], "caption": "item_ids array" },
-        { "from": "mcp", "to": "aisearch", "text": "GET /items/{id}", "via": "api", "paths": ["mcp-status"], "src": "cloudflare-api.ts", "caption": "for each item_id" },
-        { "from": "aisearch", "to": "mcp", "text": "item status", "kind": "ret", "via": "api", "paths": ["mcp-status"], "caption": "queued | running | completed | error" },
-        { "from": "mcp", "to": "mcpclient", "text": "status response", "kind": "ret", "via": "api", "paths": ["mcp-status"], "caption": "item_statuses array" }
-      ]
-    },
-    {
-      "id": "mcp-delete-flow",
-      "title": "MCP Delete Flow",
-      "subtitle": "Confirmed duplicate removal from R2 and AI Search",
-      "meta": { "created": "2026-10-09", "updated": "2026-10-09" },
-      "actors": [
-        { "id": "mcpclient", "label": "MCP Client", "zone": "frontend" },
-        { "id": "mcp", "label": "family-ai-mcp", "zone": "server", "sub_caption": "MCP Server" },
-        { "id": "delete", "label": "Deletion", "zone": "server", "sub_caption": "deletion.ts" },
-        { "id": "r2raw", "label": "R2 Raw", "zone": "external", "kind": "internal", "sub_caption": "family-raw" },
-        { "id": "r2idx", "label": "R2 Index", "zone": "external", "kind": "internal", "sub_caption": "family-index-ready-v3" },
-        { "id": "aisearch", "label": "AI Search", "zone": "external", "sub_caption": "Cloudflare" }
-      ],
-      "messages": [
-        { "phase": "CONFIRM" },
-        { "from": "mcpclient", "to": "mcp", "text": "delete_file", "via": "api", "paths": ["mcp-delete"], "caption": "key_or_prefix + confirm_delete" },
-        { "from": "mcp", "to": "delete", "text": "deleteFamilyDocument", "via": "api", "paths": ["mcp-delete"], "src": "server.ts -> deletion.ts" },
-        { "self": "delete", "text": "validate key", "caption": "safe path + narrow prefix" },
-        { "phase": "R2" },
-        { "from": "delete", "to": "r2raw", "text": "delete raw key", "via": "io", "paths": ["mcp-delete"], "caption": "when buckets include raw" },
-        { "from": "delete", "to": "r2idx", "text": "delete index key", "via": "io", "paths": ["mcp-delete"], "caption": "when buckets include index" },
-        { "phase": "SEARCH" },
-        { "from": "delete", "to": "aisearch", "text": "list matching items", "via": "api", "paths": ["mcp-delete"], "caption": "if CF_API_TOKEN" },
-        { "from": "aisearch", "to": "delete", "text": "item ids", "kind": "ret", "via": "api", "paths": ["mcp-delete"] },
-        { "from": "delete", "to": "aisearch", "text": "DELETE /items", "via": "api", "paths": ["mcp-delete"], "caption": "best effort" },
-        { "from": "delete", "to": "mcp", "text": "delete result", "kind": "ret", "via": "api", "paths": ["mcp-delete"], "caption": "deleted_objects + notes" },
-        { "from": "mcp", "to": "mcpclient", "text": "tool response", "kind": "ret", "via": "api", "paths": ["mcp-delete"] }
-      ],
-      "fragments": [
-        { "kind": "critical", "label": "confirm_delete true", "range": [0, 2] },
-        { "kind": "opt", "label": "AI Search token configured", "range": [5, 7] }
-      ]
-    },
-    {
-      "id": "generated-text-flow",
-      "title": "Generated Text Ingest Flow",
-      "subtitle": "Store chat-extracted Markdown via MCP",
-      "meta": { "created": "2026-08-14", "updated": "2026-08-14" },
-      "actors": [
-        { "id": "mcpclient", "label": "MCP Client", "zone": "frontend" },
-        { "id": "mcp", "label": "family-ai-mcp", "zone": "server", "sub_caption": "MCP Server" },
-        { "id": "validate", "label": "Validation", "zone": "server", "sub_caption": "ingestion.ts" },
-        { "id": "upload", "label": "Upload + Index", "zone": "server", "sub_caption": "ingestion.ts" },
-        { "id": "r2raw", "label": "R2 Raw", "zone": "external", "kind": "internal", "sub_caption": "family-raw" },
-        { "id": "r2idx", "label": "R2 Index", "zone": "external", "kind": "internal", "sub_caption": "family-index-ready" },
-        { "id": "aisearch", "label": "AI Search", "zone": "external", "sub_caption": "Cloudflare" }
-      ],
-      "messages": [
-        { "from": "mcpclient", "to": "mcp", "text": "ingest_generated_text", "via": "api", "paths": ["generated-text"], "caption": "filename, content_markdown, metadata" },
-        { "from": "mcp", "to": "validate", "text": "validateFile", "via": "api", "paths": ["generated-text"], "src": "server.ts → ingestion.ts", "caption": "base64-encoded markdown" },
-        { "from": "validate", "to": "mcp", "text": "validation ok", "kind": "ret", "via": "api", "paths": ["generated-text"], "caption": "validation_id" },
-        { "from": "mcp", "to": "upload", "text": "uploadAndIndex", "via": "api", "paths": ["generated-text"], "src": "server.ts → ingestion.ts", "caption": "source_kind: chat_extracted_document" },
-        { "from": "upload", "to": "r2raw", "text": "PUT markdown bytes", "via": "io", "paths": ["generated-text"], "caption": "original_preserved: false" },
-        { "from": "upload", "to": "r2idx", "text": "PUT index artifact", "via": "io", "paths": ["generated-text"] },
-        { "from": "upload", "to": "aisearch", "text": "POST /items", "via": "api", "paths": ["generated-text"], "caption": "if CF_API_TOKEN" },
-        { "from": "upload", "to": "mcp", "text": "upload result", "kind": "ret", "via": "api", "paths": ["generated-text"] },
-        { "from": "mcp", "to": "mcpclient", "text": "tool response", "kind": "ret", "via": "api", "paths": ["generated-text"] }
-      ]
-    },
-    {
-      "id": "system-architecture",
-      "title": "System Architecture",
-      "subtitle": "Two Workers, two R2 buckets, D1, Queue, and AI Search",
-      "meta": { "created": "2026-08-14", "updated": "2026-08-14" },
-      "actors": [
-        { "id": "user", "label": "User", "zone": "user" },
-        { "id": "client", "label": "Clients", "zone": "frontend", "sub": [{ "id": "web", "label": "Web UI" }, { "id": "mcp", "label": "MCP Client" }] },
-        { "id": "core", "label": "family-ai-core", "zone": "server", "sub_caption": "Hono HTTP API" },
-        { "id": "mcpworker", "label": "family-ai-mcp", "zone": "server", "sub_caption": "MCP Server" },
-        { "id": "r2raw", "label": "R2 Raw", "zone": "external", "kind": "internal", "sub_caption": "family-raw" },
-        { "id": "r2idx", "label": "R2 Index", "zone": "external", "kind": "internal", "sub_caption": "family-index-ready" },
-        { "id": "d1", "label": "D1 Database", "zone": "external", "kind": "internal", "sub_caption": "documents + versions" },
-        { "id": "queue", "label": "Queue", "zone": "external", "kind": "internal", "sub_caption": "processing" },
-        { "id": "aisearch", "label": "AI Search", "zone": "external", "sub_caption": "Cloudflare" }
-      ],
-      "messages": [
-        { "phase": "HTTP API" },
-        { "from": "user", "to": "client.web", "text": "upload document", "paths": ["http"] },
-        { "from": "client.web", "to": "core", "text": "POST /api/uploader/*", "via": "api", "paths": ["http"], "caption": "preview | save | list | get | patch" },
-        { "from": "core", "to": "r2raw", "text": "store original", "via": "io", "paths": ["http"], "caption": "PUT bytes" },
-        { "from": "core", "to": "r2idx", "text": "store index-ready", "via": "io", "paths": ["http"], "caption": "if indexing approved" },
-        { "from": "core", "to": "d1", "text": "record metadata", "via": "io", "paths": ["http"], "caption": "documents + versions tables" },
-        { "from": "core", "to": "queue", "text": "queue processing", "kind": "async", "via": "api", "paths": ["http"] },
-        { "phase": "MCP TOOLS" },
-        { "from": "client.mcp", "to": "mcpworker", "text": "MCP tool call", "via": "api", "paths": ["mcp"], "caption": "search | file ingest | text ingest" },
-        { "from": "mcpworker", "to": "r2raw", "text": "store original", "via": "io", "paths": ["mcp"], "caption": "PUT bytes" },
-        { "from": "mcpworker", "to": "r2idx", "text": "store index-ready", "via": "io", "paths": ["mcp"], "caption": "converted/split chunks" },
-        { "from": "mcpworker", "to": "aisearch", "text": "index documents", "via": "api", "paths": ["mcp"], "caption": "POST /items + /jobs" }
+        { "kind": "critical", "label": "delete requires explicit confirmation", "range": [6, 10] }
       ]
     }
   ]

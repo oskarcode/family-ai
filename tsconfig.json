@@ -12,6 +12,6 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  // Application TypeScript and generated Worker binding declarations form the checked project.
-  "include": ["src/**/*.ts", "worker-configuration.d.ts", "worker-configuration.ingest.d.ts"]
+  // Application TypeScript and generated ingest Worker binding declarations form the checked project.
+  "include": ["src/**/*.ts", "worker-configuration.ingest.d.ts"]
 }

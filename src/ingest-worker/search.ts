@@ -174,7 +174,19 @@ export async function searchFamilyDocuments(
   env: EnvBindings,
   input: SearchInput
 ): Promise<Record<string, unknown>> {
-  if (input.source_prefixes?.length) return retrieveSourcePrefixes(env, input);
+  if (input.source_prefixes?.length && env.R2_INDEX_READY) return retrieveSourcePrefixes(env, input);
+
+  if (env.AI_SEARCH) {
+    try {
+      const result = await env.AI_SEARCH.search({
+        query: input.query,
+        ai_search_options: input.ai_search_options as AiSearchOptions | undefined,
+      });
+      return { success: true, result };
+    } catch (error) {
+      return { success: false, error: `AI Search binding request failed: ${error instanceof Error ? error.message : String(error)}` };
+    }
+  }
 
   const response = await fetch(AI_SEARCH_MCP_URL, {
     method: "POST",

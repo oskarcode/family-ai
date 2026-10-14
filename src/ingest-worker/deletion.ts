@@ -64,7 +64,7 @@ export async function deleteFamilyDocument(env: EnvBindings, input: DeleteInput)
   const targetBuckets = targetsFor(env, buckets);
   const deletedObjects: Array<{ bucket: string; key: string }> = [];
   const missingObjects: Array<{ bucket: string; key: string }> = [];
-  const indexKeys = new Set<string>();
+  const aiSearchKeys = new Set<string>();
 
   for (const target of targetBuckets) {
     const keys = match === "prefix"
@@ -88,14 +88,14 @@ export async function deleteFamilyDocument(env: EnvBindings, input: DeleteInput)
       }
       await target.bucket.delete(key);
       deletedObjects.push({ bucket: target.name, key });
-      if (target.name === "index_ready") indexKeys.add(key);
+      aiSearchKeys.add(key);
     }
   }
 
   const deletedAiSearchItems: Array<{ id: string; key?: string }> = [];
   const aiSearchErrors: string[] = [];
   if (deleteAiSearchItems) {
-    for (const key of indexKeys) {
+    for (const key of aiSearchKeys) {
       try {
         const items = await listAiSearchItemsByKey(env, key);
         for (const item of items) {
@@ -116,8 +116,8 @@ export async function deleteFamilyDocument(env: EnvBindings, input: DeleteInput)
     deleted_ai_search_items: deletedAiSearchItems,
     deleted_ai_search_item_count: deletedAiSearchItems.length,
     ai_search_errors: aiSearchErrors,
-    notes: deleteAiSearchItems && !env.CF_API_TOKEN
-      ? "R2 objects were deleted. CF_API_TOKEN is not configured, so AI Search items could not be removed directly."
+    notes: deleteAiSearchItems && !env.AI_SEARCH && !env.CF_API_TOKEN
+      ? "R2 objects were deleted. Neither AI Search binding nor CF_API_TOKEN is configured, so AI Search items could not be removed directly."
       : undefined,
   };
 }

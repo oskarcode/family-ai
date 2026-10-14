@@ -1,5 +1,6 @@
 // Extend Wrangler-generated bindings only with secrets that are injected at deploy time.
 export type EnvBindings = IngestEnv & {
+  AI_SEARCH?: AiSearchInstance;
   CF_API_TOKEN?: string;
   ACCESS_CLIENT_ID?: string;
   ACCESS_CLIENT_SECRET?: string;

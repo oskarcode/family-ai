@@ -10,7 +10,7 @@ import { promisify } from "node:util";
 // The AWS SDK supplies R2's S3-compatible upload client.
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
-// Shared manifest types define each migration record consumed by the uploader.
+// Shared manifest types define each migration record consumed by the migration tool.
 import type { EnrichedRecord } from "../lib/types.js";
 
 // Promise-based subprocess execution supports the asynchronous Wrangler fallback.

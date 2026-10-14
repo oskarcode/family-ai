@@ -8,6 +8,10 @@ import type { EnvBindings, ToolResult } from "./types.js";
 // The short-lived cache avoids repeated supported-format API requests.
 let formatCache: { expiresAt: number; byExtension: Map<string, string> } | null = null;
 
+function getAiSearchInstance(env: EnvBindings): AiSearchInstance | null {
+  return env.AI_SEARCH || null;
+}
+
 /**
  * Input:
  * - Worker bindings, a Cloudflare API path, request options, and optional content type.
@@ -109,8 +113,16 @@ export async function uploadItemToAiSearch(
   env: EnvBindings,
   indexFilename: string,
   mimeType: string,
-  payload: Uint8Array
+  payload: Uint8Array,
+  metadata?: Record<string, unknown>
 ): Promise<{ id: string; key: string; status: string }> {
+  const instance = getAiSearchInstance(env);
+  if (instance) {
+    const body = payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength) as ArrayBuffer;
+    const item = await instance.items.upload(indexFilename, new Blob([body], { type: mimeType }), { metadata });
+    return { id: item.id, key: item.key, status: item.status };
+  }
+
   const multipart = buildMultipartSingleFile("file", indexFilename, mimeType, payload, [
     { name: "wait_for_completion", value: "false" },
   ]);
@@ -131,6 +143,14 @@ export async function listAiSearchItemsByKey(
   env: EnvBindings,
   key: string
 ): Promise<Array<{ id: string; key?: string; status?: string }>> {
+  const instance = getAiSearchInstance(env);
+  if (instance) {
+    const result = await instance.items.list({ search: key, per_page: 50 });
+    return result.result
+      .filter((item) => item.key === key || item.key?.startsWith(key))
+      .map((item) => ({ id: item.id, key: item.key, status: item.status }));
+  }
+
   if (!env.CF_API_TOKEN) return [];
   const result = await cloudflareApi<AiSearchItemsList | Array<{ id?: string; key?: string; status?: string }>>(
     env,
@@ -146,6 +166,12 @@ export async function listAiSearchItemsByKey(
 }
 
 export async function deleteAiSearchItem(env: EnvBindings, itemId: string): Promise<void> {
+  const instance = getAiSearchInstance(env);
+  if (instance) {
+    await instance.items.delete(itemId);
+    return;
+  }
+
   await cloudflareApi(
     env,
     `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-search/namespaces/${env.AI_SEARCH_NAMESPACE}/instances/${env.AI_SEARCH_INSTANCE_ID}/items/${encodeURIComponent(itemId)}`,
@@ -162,6 +188,15 @@ export async function deleteAiSearchItem(env: EnvBindings, itemId: string): Prom
  * - Requests an AI Search sync as a best-effort ingestion fallback.
  */
 export async function triggerSyncJob(env: EnvBindings, description: string): Promise<{ id?: string } | null> {
+  const instance = getAiSearchInstance(env);
+  if (instance) {
+    try {
+      return await instance.jobs.create({ description });
+    } catch {
+      return null;
+    }
+  }
+
   if (!env.CF_API_TOKEN) return null;
   try {
     return await cloudflareApi<{ id: string }>(
@@ -186,7 +221,17 @@ export async function triggerSyncJob(env: EnvBindings, description: string): Pro
 export async function checkStatus(env: EnvBindings, input: { item_ids: string[] }): Promise<ToolResult> {
   const itemIds = Array.isArray(input.item_ids) ? input.item_ids.map((item) => String(item)).filter(Boolean) : [];
   if (itemIds.length === 0) return { ok: false, error: "item_ids (array) is required" };
-  if (!env.CF_API_TOKEN) return { ok: false, error: "CF_API_TOKEN is required for ingest_status" };
+
+  const instance = getAiSearchInstance(env);
+  if (instance) {
+    const statuses: unknown[] = [];
+    for (const itemId of itemIds) {
+      statuses.push(await instance.items.get(itemId).info());
+    }
+    return { ok: true, item_statuses: statuses };
+  }
+
+  if (!env.CF_API_TOKEN) return { ok: false, error: "AI Search binding or CF_API_TOKEN is required for ingest_status" };
 
   const statuses: unknown[] = [];
   for (const itemId of itemIds) {

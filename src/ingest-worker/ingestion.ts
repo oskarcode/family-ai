@@ -272,6 +272,47 @@ export async function uploadBytesAndIndex(
     customMetadata: storageMetadata,
   });
 
+  const aiSearchMetadata = {
+    category: keys.category,
+    year: keys.year,
+    person: keys.person,
+    doc_type: keys.docType,
+    sensitivity,
+  };
+
+  if (env.AI_SEARCH) {
+    try {
+      const uploaded = await uploadItemToAiSearch(env, keys.rawKey, mimeType, originalBytes, aiSearchMetadata);
+      return {
+        ok: true,
+        approved_by: approvedBy,
+        sensitivity,
+        metadata: {
+          category: keys.category,
+          year: keys.year,
+          person: keys.person,
+          doc_type: keys.docType,
+          logical_folder: input.logical_folder || "documents",
+          source_name: sourceFilename,
+          stored_filename: input.filename,
+          source_kind: sourceKind,
+          original_preserved: originalPreserved,
+          extraction_complete: input.extraction_complete,
+        },
+        raw_key: keys.rawKey,
+        index_keys: [{ key: keys.rawKey, bytes: originalBytes.byteLength, mode: "ai_search_builtin" }],
+        ai_search_item_uploads: [uploaded],
+        notes: "Original preserved in R2_RAW and uploaded directly to AI Search built-in storage for managed indexing.",
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: `AI Search item upload failed after preserving original: ${error instanceof Error ? error.message : String(error)}`,
+        raw_key: keys.rawKey,
+      };
+    }
+  }
+
   const supported = await fetchSupportedFormats(env);
   const directSupported = supported.has(extension) || DIRECT_TEXT_EXTENSIONS.has(extension);
   const indexArtifacts: Array<{ key: string; bytes: Uint8Array; mimeType: string; mode: string }> = [];
@@ -334,7 +375,7 @@ export async function uploadBytesAndIndex(
     });
     if (env.CF_API_TOKEN) {
       try {
-        const uploaded = await uploadItemToAiSearch(env, artifact.key, artifact.mimeType, artifact.bytes);
+        const uploaded = await uploadItemToAiSearch(env, artifact.key, artifact.mimeType, artifact.bytes, aiSearchMetadata);
         uploadedItems.push(uploaded);
       } catch (error) {
         directUploadFailed = true;

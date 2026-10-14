@@ -19,7 +19,11 @@ export const KNOWN_CATEGORIES: Set<string> = new Set(CANONICAL_CATEGORY_VALUES);
 export const KNOWN_PEOPLE: Set<string> = new Set(PERSON_VALUES);
 export const KNOWN_SENSITIVITY: Set<string> = new Set(SENSITIVITY_VALUES);
 export const DIRECT_TEXT_EXTENSIONS = new Set(["txt", "md", "markdown", "csv", "json", "xml", "yaml", "yml", "html", "htm"]);
-export const ALLOWED_EXTENSIONS = new Set(["txt", "md", "markdown", "csv", "json", "xml", "yaml", "yml", "html", "htm", "pdf", "doc", "docx", "rtf", "xlsx", "pptx"]);
+export const ALLOWED_EXTENSIONS = new Set([
+  "txt", "md", "markdown", "csv", "json", "xml", "yaml", "yml", "html", "htm",
+  "pdf", "doc", "docx", "rtf", "xlsx", "pptx",
+  "jpg", "jpeg", "png", "webp", "gif", "bmp", "tif", "tiff", "heic", "heif",
+]);
 
 // MIME hints catch mismatches between declared content types and file extensions.
 export const EXTENSION_MIME_HINTS: Record<string, string[]> = {
@@ -39,4 +43,14 @@ export const EXTENSION_MIME_HINTS: Record<string, string[]> = {
   rtf: ["application/rtf", "text/rtf"],
   xlsx: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
   pptx: ["application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+  jpg: ["image/jpeg"],
+  jpeg: ["image/jpeg"],
+  png: ["image/png"],
+  webp: ["image/webp"],
+  gif: ["image/gif"],
+  bmp: ["image/bmp"],
+  tif: ["image/tiff"],
+  tiff: ["image/tiff"],
+  heic: ["image/heic"],
+  heif: ["image/heif"],
 };

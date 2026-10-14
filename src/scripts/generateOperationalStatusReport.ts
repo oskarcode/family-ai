@@ -166,10 +166,10 @@ function main(): void {
 
   const search = readJson<SearchValidation | null>(path.join(OUT_DIR, "search_validation_report.json"), null);
 
-  // Reconcile queue activity into the single next milestone presented to operators.
+  // Reconcile indexing activity into the single next milestone presented to operators.
   const nextMilestone =
     indexing.stats.queued === 0 && indexing.stats.running === 0
-      ? "Indexing complete. Next: run final wait-mode search validation and then start uploader API + D1 write path."
+      ? "Indexing complete. Next: run final wait-mode search validation and continue MCP-first ingestion."
       : "Indexing in progress. Keep v3 as active instance and rerun ops status until queued/running reach zero.";
 
   const payload = {
