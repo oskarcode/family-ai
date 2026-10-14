@@ -15,8 +15,7 @@
           { "id": "search", "label": "Search" }
         ] },
         { "id": "r2", "label": "R2", "zone": "external", "sub": [
-          { "id": "raw", "label": "family-raw" },
-          { "id": "legacy", "label": "index-ready" }
+          { "id": "raw", "label": "family-raw" }
         ] },
         { "id": "ais", "label": "AI Search", "zone": "external", "sub_caption": "family-ai-chat-v3" }
       ],
@@ -29,12 +28,8 @@
         { "phase": "RETRIEVE" },
         { "from": "worker.search", "to": "ais", "text": "AI_SEARCH.search", "caption": "binding call", "via": "api", "paths": ["search"], "src": "src/ingest-worker/search.ts" },
         { "from": "ais", "to": "worker.search", "text": "ranked chunks", "kind": "ret" },
-        { "from": "worker.search", "to": "r2.legacy", "text": "legacy prefix", "caption": "only when source_prefixes", "via": "io", "paths": ["prefix"] },
         { "from": "worker.search", "to": "worker.tools", "text": "structured result", "kind": "ret" },
         { "from": "worker.tools", "to": "client", "text": "tool response", "caption": "structuredContent", "kind": "ret" }
-      ],
-      "fragments": [
-        { "kind": "opt", "label": "source_prefixes supplied", "range": [7, 8] }
       ]
     },
     {
@@ -64,7 +59,7 @@
         { "phase": "DELETE" },
         { "from": "client", "to": "worker.tools", "text": "delete_file", "caption": "confirm_delete true", "via": "api", "paths": ["delete"] },
         { "from": "worker.tools", "to": "worker.delete", "text": "validate key", "caption": "safe path + prefix guard" },
-        { "from": "worker.delete", "to": "r2", "text": "delete object", "caption": "raw/index/both", "via": "io" },
+        { "from": "worker.delete", "to": "r2", "text": "delete object", "caption": "raw_key", "via": "io" },
         { "from": "worker.delete", "to": "ais", "text": "find + delete item", "caption": "matching key", "via": "api" },
         { "from": "worker.delete", "to": "client", "text": "delete summary", "caption": "objects + item count", "kind": "ret" }
       ],

@@ -19,10 +19,10 @@ MCP client / ChatGPT
 |---|---|
 | `src/ingest-worker/index.ts` | Worker `/health` and `/mcp` entrypoint |
 | `src/ingest-worker/server.ts` | MCP tool registration and schemas |
-| `src/ingest-worker/search.ts` | AI Search binding search; older R2 prefix retrieval fallback |
+| `src/ingest-worker/search.ts` | AI Search binding search |
 | `src/ingest-worker/ingestion.ts` | Upload validation, original preservation, AI Search item upload |
-| `src/ingest-worker/deletion.ts` | Confirmed R2 and AI Search item deletion |
-| `src/ingest-worker/cloudflare-api.ts` | AI Search binding helpers plus REST fallback helpers |
+| `src/ingest-worker/deletion.ts` | Confirmed R2 raw and AI Search item deletion |
+| `src/ingest-worker/cloudflare-api.ts` | AI Search binding helpers |
 | `src/lib/` | Shared categories, classifier, and types |
 | `src/config/policy.ts` | Migration/reporting policy helpers |
 | `src/scripts/` | Operational migration/report/cleanup scripts |
@@ -44,7 +44,6 @@ These were intentionally removed:
 
 - Worker: `family-ai-ingest-mcp`.
 - R2 raw bucket: `family-raw`.
-- Legacy index-ready bucket: `family-index-ready-v3`, still bound for old prefix retrieval and compatibility.
 - AI Search instance: `family-ai-chat-v3`.
 - AI Search custom metadata fields: `category`, `year`, `person`, `doc_type`, `sensitivity`.
 

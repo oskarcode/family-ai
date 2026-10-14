@@ -8,7 +8,7 @@ Family AI is a Cloudflare Worker MCP server for private family-document search a
 - Preserves original submitted documents in the `family-raw` R2 bucket.
 - Uploads newly ingested searchable content directly to Cloudflare AI Search built-in storage.
 - Supports ChatGPT file-param uploads, Base64 validated uploads, generated Markdown ingestion, and exact/prefix deletion with confirmation.
-- Keeps the old index-ready R2 bucket bound only for backward-compatible prefix retrieval of legacy artifacts.
+- Uses the AI Search Worker binding as the only search/index/status/delete integration path.
 
 ## How It Works
 
@@ -43,10 +43,10 @@ The previous standalone core HTTP uploader API, D1 metadata database, and queue 
 |---|---|
 | `src/ingest-worker/index.ts` | Worker entrypoint for `/health` and `/mcp` |
 | `src/ingest-worker/server.ts` | MCP tool schemas, annotations, and callbacks |
-| `src/ingest-worker/search.ts` | AI Search binding search plus legacy prefix retrieval |
+| `src/ingest-worker/search.ts` | AI Search binding search |
 | `src/ingest-worker/ingestion.ts` | Upload validation, R2 preservation, AI Search upload |
-| `src/ingest-worker/deletion.ts` | Confirmed R2 and AI Search deletion |
-| `src/ingest-worker/cloudflare-api.ts` | AI Search binding helpers and REST fallbacks |
+| `src/ingest-worker/deletion.ts` | Confirmed R2 raw and AI Search deletion |
+| `src/ingest-worker/cloudflare-api.ts` | AI Search binding helpers |
 | `src/lib/` | Shared category/classifier/type helpers |
 | `src/scripts/` | Operational migration, reporting, and cleanup commands |
 | `wrangler.ingest.jsonc` | Active Worker deployment config |
@@ -117,7 +117,7 @@ npm run deploy:ingest
 - If neither Access secret exists, the current code allows `/mcp` requests. For private deployments, configure both secrets and put the endpoint behind the intended Access/Portal boundary.
 - `/health` is intentionally public and does not expose document contents.
 - `delete_file` requires `confirm_delete: true`, rejects unsafe paths, and limits broad prefix deletion.
-- Secret names used by the Worker include `ACCESS_CLIENT_ID`, `ACCESS_CLIENT_SECRET`, `PREFLIGHT_SIGNING_SECRET`, and optional `CF_API_TOKEN` for REST fallback paths.
+- Secret names used by the Worker include `ACCESS_CLIENT_ID`, `ACCESS_CLIENT_SECRET`, and `PREFLIGHT_SIGNING_SECRET`.
 - Do not commit `.env` values, Access service-token values, Cloudflare API tokens, or private document data.
 
 ## Customize It

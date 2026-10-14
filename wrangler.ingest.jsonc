@@ -13,19 +13,14 @@
   "observability": {
     "enabled": true
   },
-  // R2 preserves original submitted family documents. The index-ready bucket remains
-  // bound for backward compatibility with older indexed artifacts and prefix retrieval.
+  // R2 preserves original submitted family documents.
   "r2_buckets": [
     {
       "binding": "R2_RAW",
       "bucket_name": "family-raw"
-    },
-    {
-      "binding": "R2_INDEX_READY",
-      "bucket_name": "family-index-ready-v3"
     }
   ],
-  // AI Search binding replaces manual REST calls for search, item upload/status/delete,
+  // AI Search binding handles search, item upload/status/delete,
   // and uses built-in AI Search storage/indexing for newly uploaded files.
   "ai_search": [
     {

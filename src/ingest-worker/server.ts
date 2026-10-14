@@ -74,7 +74,7 @@ export function createUnifiedServer(env: EnvBindings) {
       tool_schema_version: TOOL_SCHEMA_VERSION,
       tools: ["family_ai_server_info", "search", "delete_file", "ingest_validate_file", "ingest_upload_validated_file", "ingest_chatgpt_file", "ingest_generated_text", "ingest_status"],
       required_upload_fields: ["validation_id", "filename", "file_base64"],
-      optional_upload_fields: ["mime_type", "logical_folder", "category", "year", "person", "doc_type", "sensitivity", "approved_by", "index_markdown_fallback"],
+      optional_upload_fields: ["mime_type", "logical_folder", "category", "year", "person", "doc_type", "sensitivity", "approved_by"],
       generated_text_fields: ["filename", "content_markdown", "extraction_complete", "source_filename"],
     })
   );
@@ -83,7 +83,7 @@ export function createUnifiedServer(env: EnvBindings) {
   server.registerTool(
     "ingest_chatgpt_file",
     {
-      description: "Ingest a ChatGPT-attached file using OpenAI Apps SDK file params. Use this when ChatGPT can pass a file object with download_url and file_id. The Worker downloads the temporary file URL server-side, preserves original bytes in private R2, derives index artifacts, and updates AI Search. Generic MCP clients should use ingest_upload_validated_file for Base64 bytes.",
+      description: "Ingest a ChatGPT-attached file using OpenAI Apps SDK file params. Use this when ChatGPT can pass a file object with download_url and file_id. The Worker downloads the temporary file URL server-side, preserves original bytes in private R2, and uploads them to AI Search built-in storage. Generic MCP clients should use ingest_upload_validated_file for Base64 bytes.",
       inputSchema: {
         file: openAiFileSchema,
         filename: z.string().trim().min(1).max(255).optional(),
@@ -94,7 +94,6 @@ export function createUnifiedServer(env: EnvBindings) {
         doc_type: z.string().trim().regex(/^[a-z0-9_-]{2,64}$/).optional(),
         sensitivity: z.enum(SENSITIVITY_VALUES).optional(),
         approved_by: z.string().trim().regex(/^[a-z0-9_-]{2,64}$/).optional(),
-        index_markdown_fallback: z.string().trim().min(1).optional(),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -116,7 +115,6 @@ export function createUnifiedServer(env: EnvBindings) {
         raw_key: z.string().optional(),
         index_keys: z.array(z.object({ key: z.string(), bytes: z.number(), mode: z.string() })).optional(),
         ai_search_item_uploads: z.array(z.object({ id: z.string(), key: z.string(), status: z.string() }).passthrough()).optional(),
-        sync_job: z.record(z.string(), z.unknown()).nullable().optional(),
         warnings: z.array(z.string()).optional(),
         notes: z.string().optional(),
       },
@@ -143,8 +141,7 @@ export function createUnifiedServer(env: EnvBindings) {
           })
           .describe("Exact canonical object key from a search result or upload response, for example medical/2026/kaitlin/birth_plan/file.md. For prefix deletes, use a narrow folder/file prefix."),
         match: z.enum(["exact", "prefix"]).optional().describe("Use exact unless intentionally removing every object under a narrow duplicate prefix."),
-        buckets: z.enum(["index_ready", "raw", "both"]).optional().describe("Which private R2 bucket artifacts to delete. Defaults to both."),
-        delete_ai_search_items: z.boolean().optional().describe("Also remove AI Search items whose key matches deleted index-ready objects. Defaults to true."),
+        delete_ai_search_items: z.boolean().optional().describe("Also remove AI Search items whose key matches deleted raw objects. Defaults to true."),
         confirm_delete: z.boolean().optional().describe("Required true acknowledgement that this permanently removes private family records from storage/search."),
       },
       outputSchema: {
@@ -170,20 +167,9 @@ export function createUnifiedServer(env: EnvBindings) {
   server.registerTool(
     "search",
     {
-      description: "Search private Family AI documents and return evidence with source keys, text, scores, and metadata. For ordinary questions, use ai_search_options. When the user names an indexed item path or folder, pass one or more exact canonical key prefixes in source_prefixes; this strictly returns only matching source objects and is the reliable way to retrieve complete known chat histories.",
+      description: "Search private Family AI documents through the configured Cloudflare AI Search binding and return evidence with source keys, text, scores, and metadata.",
       inputSchema: {
         query: z.string().min(1).describe("The family-document question or search phrase."),
-        source_prefixes: z.array(
-          z.string()
-            .trim()
-            .min(1)
-            .max(512)
-            .refine((value) => !value.startsWith("/") && !value.includes("\\") && !value.split("/").includes(".."), {
-              message: "Source prefixes must be canonical relative object-key prefixes.",
-            })
-        ).min(1).max(10).optional().describe(
-          "Strict canonical object-key prefixes, for example relationship/2026/oskar/relationship_chat. Use when a known indexed path or source must be retrieved without unrelated semantic matches."
-        ),
         ai_search_options: z.object({
           retrieval: z.object({
             retrieval_type: z.enum(["vector", "keyword", "hybrid"]).optional(),
@@ -238,8 +224,8 @@ export function createUnifiedServer(env: EnvBindings) {
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
-    async ({ query, source_prefixes, ai_search_options }) => {
-      const result = await searchFamilyDocuments(env, { query, source_prefixes, ai_search_options });
+    async ({ query, ai_search_options }) => {
+      const result = await searchFamilyDocuments(env, { query, ai_search_options });
       return toToolResponse(result);
     }
   );
@@ -262,9 +248,7 @@ export function createUnifiedServer(env: EnvBindings) {
         size_bytes: z.number().optional(),
         max_upload_size_bytes: z.number().optional(),
         ai_search_max_file_size_bytes: z.number().optional(),
-        direct_supported: z.boolean().optional(),
-        can_convert: z.boolean().optional(),
-        recommended_action: z.enum(["direct_upload", "convert_then_split", "reject"]).optional(),
+        recommended_action: z.enum(["ai_search_builtin_upload"]).optional(),
         reason: z.string().optional(),
         validation_id: z.string().nullable().optional(),
         validation_note: z.string().optional(),
@@ -282,7 +266,7 @@ export function createUnifiedServer(env: EnvBindings) {
   server.registerTool(
     "ingest_upload_validated_file",
     {
-      description: "Step 2 (execute upload). Ingest a prevalidated family document into the configured family workspace. Requires validation_id from ingest_validate_file plus original file_base64 bytes, writes to private R2 storage, derives index artifacts, and updates AI Search. This is the MCP-native preserved-original upload path when a client can provide bytes but cannot perform external HTTP PUT. Does not fetch external URLs or system files.",
+      description: "Step 2 (execute upload). Ingest a prevalidated family document into the configured family workspace. Requires validation_id from ingest_validate_file plus original file_base64 bytes, writes to private R2 storage, and uploads the bytes to AI Search built-in storage. This is the MCP-native preserved-original upload path when a client can provide bytes but cannot perform external HTTP PUT. Does not fetch external URLs or system files.",
       inputSchema: {
         validation_id: z.string().min(20),
         filename: z.string().min(1),
@@ -295,7 +279,6 @@ export function createUnifiedServer(env: EnvBindings) {
         doc_type: z.string().trim().regex(/^[a-z0-9_-]{2,64}$/).optional(),
         sensitivity: z.enum(SENSITIVITY_VALUES).optional(),
         approved_by: z.string().trim().regex(/^[a-z0-9_-]{2,64}$/).optional(),
-        index_markdown_fallback: z.string().trim().min(1).optional(),
       },
       outputSchema: {
         ok: z.boolean(),
@@ -317,7 +300,6 @@ export function createUnifiedServer(env: EnvBindings) {
         raw_key: z.string().optional(),
         index_keys: z.array(z.object({ key: z.string(), bytes: z.number(), mode: z.string() })).optional(),
         ai_search_item_uploads: z.array(z.object({ id: z.string(), key: z.string(), status: z.string() }).passthrough()).optional(),
-        sync_job: z.record(z.string(), z.unknown()).nullable().optional(),
         warnings: z.array(z.string()).optional(),
         notes: z.string().optional(),
       },
@@ -367,7 +349,6 @@ export function createUnifiedServer(env: EnvBindings) {
         raw_key: z.string().optional(),
         index_keys: z.array(z.object({ key: z.string(), bytes: z.number(), mode: z.string() })).optional(),
         ai_search_item_uploads: z.array(z.object({ id: z.string(), key: z.string(), status: z.string() }).passthrough()).optional(),
-        sync_job: z.record(z.string(), z.unknown()).nullable().optional(),
         warnings: z.array(z.string()).optional(),
         notes: z.string().optional(),
       },

@@ -1,19 +1,12 @@
 // Shared classifier helpers derive canonical filenames and document types.
 import { detectDocType, toCanonicalFilename } from "../lib/classifier.js";
 
-// Cloudflare API helpers provide conversion, upload, sync, and format discovery.
-import {
-  convertToMarkdownViaApi,
-  fetchSupportedFormats,
-  triggerSyncJob,
-  uploadItemToAiSearch,
-} from "./cloudflare-api.js";
+// Cloudflare API helpers upload documents through the AI Search binding.
+import { uploadItemToAiSearch } from "./cloudflare-api.js";
 
 // Ingestion limits and format allowlists enforce the Family AI upload contract.
 import {
-  AI_SEARCH_MAX_BYTES,
   ALLOWED_EXTENSIONS,
-  DIRECT_TEXT_EXTENSIONS,
   MAX_UPLOAD_BYTES,
 } from "./config.js";
 
@@ -26,14 +19,10 @@ import {
   hmacSha256Hex,
   inferExtension,
   isMimeCompatible,
-  replaceExtension,
   sanitizeCategory,
   sanitizePerson,
   sanitizeSensitivity,
   sanitizeYear,
-  splitTextByMaxBytes,
-  stripRtfToText,
-  textFromBytes,
   toBase64Url,
   toHex,
 } from "./file-utils.js";
@@ -153,7 +142,7 @@ function buildRawAndIndexKey(input: Omit<UploadInput, "validation_id" | "file_ba
  * Output:
  * - Preflight support details and a short-lived validation identifier.
  * What this function does:
- * - Checks filename, format, size, and conversion options before upload.
+ * - Checks filename, format, size, and AI Search upload readiness before upload.
  */
 export async function validateFile(
   env: EnvBindings,
@@ -166,7 +155,6 @@ export async function validateFile(
   if (!ALLOWED_EXTENSIONS.has(extension)) {
     return { ok: false, filename, extension, error: "File type is not allowed for Family AI upload." };
   }
-  const supported = await fetchSupportedFormats(env);
   const fromPayload = typeof input.file_base64 === "string" && input.file_base64.length > 0;
   const bytes = fromPayload ? decodeBase64ToBytes(String(input.file_base64)) : null;
   const sizeBytes = bytes ? bytes.byteLength : Number(input.size_bytes || 0);
@@ -181,30 +169,15 @@ export async function validateFile(
       error: "File exceeds upload safety limit.",
     };
   }
-  const directSupported = supported.has(extension) || DIRECT_TEXT_EXTENSIONS.has(extension);
-  const canConvert = directSupported || extension === "rtf";
-
-  let recommended_action: string;
-  let reason: string;
-  if (sizeBytes > 0 && sizeBytes <= AI_SEARCH_MAX_BYTES && directSupported) {
-    recommended_action = "direct_upload";
-    reason = "File is supported and within AI Search 4MB limit.";
-  } else if (canConvert) {
-    recommended_action = "convert_then_split";
-    reason = "File can be converted/split into indexable chunks.";
-  } else {
-    recommended_action = "reject";
-    reason = "File format is not in known supported conversion formats.";
-  }
+  const recommended_action = "ai_search_builtin_upload";
+  const reason = "File extension is allowed; AI Search built-in storage handles indexing.";
 
   return {
     ok: true,
     filename,
     extension,
     size_bytes: sizeBytes,
-    ai_search_max_file_size_bytes: AI_SEARCH_MAX_BYTES,
-    direct_supported: directSupported,
-    can_convert: canConvert,
+    ai_search_max_file_size_bytes: MAX_UPLOAD_BYTES,
     recommended_action,
     reason,
     validation_id: await createValidationId(env, {
@@ -223,7 +196,7 @@ export async function validateFile(
  * Output:
  * - Stored artifact metadata, AI Search submissions, and warnings.
  * What this function does:
- * - Preserves source bytes, derives index artifacts, and starts indexing.
+ * - Preserves source bytes and uploads them to AI Search built-in storage.
  */
 export async function uploadBytesAndIndex(
   env: EnvBindings,
@@ -280,143 +253,37 @@ export async function uploadBytesAndIndex(
     sensitivity,
   };
 
-  if (env.AI_SEARCH) {
-    try {
-      const uploaded = await uploadItemToAiSearch(env, keys.rawKey, mimeType, originalBytes, aiSearchMetadata);
-      return {
-        ok: true,
-        approved_by: approvedBy,
-        sensitivity,
-        metadata: {
-          category: keys.category,
-          year: keys.year,
-          person: keys.person,
-          doc_type: keys.docType,
-          logical_folder: input.logical_folder || "documents",
-          source_name: sourceFilename,
-          stored_filename: input.filename,
-          source_kind: sourceKind,
-          original_preserved: originalPreserved,
-          extraction_complete: input.extraction_complete,
-        },
-        raw_key: keys.rawKey,
-        index_keys: [{ key: keys.rawKey, bytes: originalBytes.byteLength, mode: "ai_search_builtin" }],
-        ai_search_item_uploads: [uploaded],
-        notes: "Original preserved in R2_RAW and uploaded directly to AI Search built-in storage for managed indexing.",
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        error: `AI Search item upload failed after preserving original: ${error instanceof Error ? error.message : String(error)}`,
-        raw_key: keys.rawKey,
-      };
-    }
+  try {
+    const uploaded = await uploadItemToAiSearch(env, keys.rawKey, mimeType, originalBytes, aiSearchMetadata);
+    return {
+      ok: true,
+      approved_by: approvedBy,
+      sensitivity,
+      metadata: {
+        category: keys.category,
+        year: keys.year,
+        person: keys.person,
+        doc_type: keys.docType,
+        logical_folder: input.logical_folder || "documents",
+        source_name: sourceFilename,
+        stored_filename: input.filename,
+        source_kind: sourceKind,
+        original_preserved: originalPreserved,
+        extraction_complete: input.extraction_complete,
+      },
+      raw_key: keys.rawKey,
+      index_keys: [{ key: keys.rawKey, bytes: originalBytes.byteLength, mode: "ai_search_builtin" }],
+      ai_search_item_uploads: [uploaded],
+      warnings: input.extraction_complete === false ? ["Source extraction was marked incomplete by the caller."] : [],
+      notes: "Original preserved in R2_RAW and uploaded directly to AI Search built-in storage for managed indexing.",
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `AI Search item upload failed after preserving original: ${error instanceof Error ? error.message : String(error)}`,
+      raw_key: keys.rawKey,
+    };
   }
-
-  const supported = await fetchSupportedFormats(env);
-  const directSupported = supported.has(extension) || DIRECT_TEXT_EXTENSIONS.has(extension);
-  const indexArtifacts: Array<{ key: string; bytes: Uint8Array; mimeType: string; mode: string }> = [];
-  const warnings: string[] = [];
-  let directUploadFailed = false;
-  if (input.extraction_complete === false) warnings.push("Source extraction was marked incomplete by the caller.");
-
-  if (originalBytes.byteLength <= AI_SEARCH_MAX_BYTES && directSupported) {
-    indexArtifacts.push({ key: keys.rawKey, bytes: originalBytes, mimeType, mode: "direct" });
-  } else {
-    let textForIndex = "";
-    let indexMode = "converted_split";
-    if (extension === "rtf") {
-      textForIndex = stripRtfToText(textFromBytes(originalBytes));
-    } else if (mimeType.startsWith("text/") || DIRECT_TEXT_EXTENSIONS.has(extension)) {
-      textForIndex = textFromBytes(originalBytes);
-    } else {
-      try {
-        textForIndex = await convertToMarkdownViaApi(env, input.filename, mimeType, originalBytes);
-      } catch (error) {
-        const fallback = input.index_markdown_fallback?.trim() || "";
-        if (!fallback) {
-          return {
-            ok: false,
-            error: `Could not convert original file for indexing: ${error instanceof Error ? error.message : String(error)}`,
-            raw_key: keys.rawKey,
-            warnings,
-          };
-        }
-        textForIndex = fallback;
-        indexMode = "fallback_markdown";
-        warnings.push(`Original file conversion failed; indexed caller-provided Markdown fallback instead: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-
-    if (!textForIndex.trim()) {
-      return { ok: false, error: "Could not derive indexable text payload from file.", raw_key: keys.rawKey };
-    }
-
-    const splitParts = splitTextByMaxBytes(textForIndex, Math.floor(AI_SEARCH_MAX_BYTES * 0.9));
-    for (let index = 0; index < splitParts.length; index += 1) {
-      const partNumber = String(index + 1).padStart(3, "0");
-      const partKey = splitParts.length === 1
-        ? replaceExtension(keys.rawKey, "md")
-        : replaceExtension(keys.rawKey, `part_${partNumber}.md`);
-      indexArtifacts.push({
-        key: partKey,
-        bytes: new TextEncoder().encode(splitParts[index]),
-        mimeType: "text/markdown; charset=utf-8",
-        mode: indexMode,
-      });
-    }
-  }
-
-  const uploadedItems: Array<{ id: string; key: string; status: string }> = [];
-  for (const artifact of indexArtifacts) {
-    await env.R2_INDEX_READY.put(artifact.key, artifact.bytes, {
-      httpMetadata: { contentType: artifact.mimeType },
-      customMetadata: storageMetadata,
-    });
-    if (env.CF_API_TOKEN) {
-      try {
-        const uploaded = await uploadItemToAiSearch(env, artifact.key, artifact.mimeType, artifact.bytes, aiSearchMetadata);
-        uploadedItems.push(uploaded);
-      } catch (error) {
-        directUploadFailed = true;
-        warnings.push(`Direct AI Search item upload failed for ${artifact.key}: ${String(error)}`);
-      }
-    }
-  }
-
-  const syncJob = await triggerSyncJob(env, `${sourceKind} ${input.filename}`);
-
-  return {
-    ok: true,
-    approved_by: approvedBy,
-    sensitivity,
-    metadata: {
-      category: keys.category,
-      year: keys.year,
-      person: keys.person,
-      doc_type: keys.docType,
-      logical_folder: input.logical_folder || "documents",
-      source_name: sourceFilename,
-      stored_filename: input.filename,
-      source_kind: sourceKind,
-      original_preserved: originalPreserved,
-      extraction_complete: input.extraction_complete,
-    },
-    raw_key: keys.rawKey,
-    index_keys: indexArtifacts.map((artifact) => ({
-      key: artifact.key,
-      bytes: artifact.bytes.byteLength,
-      mode: artifact.mode,
-    })),
-    ai_search_item_uploads: uploadedItems,
-    sync_job: syncJob,
-    warnings,
-    notes: !env.CF_API_TOKEN
-      ? "Uploaded to R2 raw/index-ready. Set CF_API_TOKEN secret to enable direct AI Search item upload + sync trigger."
-      : directUploadFailed
-        ? "Uploaded to R2 raw/index-ready. Direct AI Search upload failed; indexing will continue via sync jobs."
-        : "Uploaded to R2 raw/index-ready and pushed direct AI Search item uploads.",
-  };
 }
 
 export async function uploadAndIndex(env: EnvBindings, input: UploadInput): Promise<ToolResult> {
@@ -524,7 +391,6 @@ export async function ingestChatGptFile(env: EnvBindings, input: ChatGptFileInpu
     source_kind: "user_provided_file",
     source_filename: input.file.file_name || filename,
     original_preserved: true,
-    index_markdown_fallback: input.index_markdown_fallback,
   }, originalBytes);
 }
 
@@ -534,7 +400,7 @@ export async function ingestChatGptFile(env: EnvBindings, input: ChatGptFileInpu
  * Output:
  * - The standard Family AI upload and indexing result.
  * What this function does:
- * - Validates provenance and sends derived text through the file pipeline.
+ * - Validates provenance and sends generated Markdown through the same AI Search upload pipeline.
  */
 export async function ingestGeneratedText(env: EnvBindings, input: GeneratedTextInput): Promise<ToolResult> {
   const filename = input.filename.trim();

@@ -19,7 +19,6 @@ This repository now runs one active service: the Family AI MCP Worker configured
 - Search now uses the `AI_SEARCH` Worker binding in `src/ingest-worker/search.ts`.
 - Confirm the AI Search instance in `wrangler.ingest.jsonc` is `family-ai-chat-v3`.
 - Check AI Search metadata filters: configured fields are `category`, `year`, `person`, `doc_type`, and `sensitivity`.
-- For exact older object retrieval, use `source_prefixes`; this still reads `R2_INDEX_READY` for legacy artifacts.
 
 ## Upload succeeds but the item is not immediately searchable
 
@@ -29,7 +28,7 @@ This repository now runs one active service: the Family AI MCP Worker configured
 
 ## Delete does not remove search results
 
-- `delete_file` deletes matching R2 objects and then looks up matching AI Search items by key.
+- `delete_file` deletes matching `R2_RAW` objects and then looks up matching AI Search items by key.
 - Use the exact `raw_key` returned by upload for new built-in-storage items.
 - `confirm_delete: true` is required.
 - Prefix deletion is intentionally guarded and refuses broad matches.
@@ -47,5 +46,4 @@ npm run deploy:ingest
 
 - Worker: `family-ai-ingest-mcp`
 - R2 raw bucket: `family-raw`
-- Legacy R2 index bucket: `family-index-ready-v3`
 - AI Search instance: `family-ai-chat-v3`

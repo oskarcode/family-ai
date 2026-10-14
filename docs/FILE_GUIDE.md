@@ -8,10 +8,10 @@ Family AI is now MCP-first. The old standalone core HTTP uploader, D1 database, 
 |---|---|
 | `src/ingest-worker/index.ts` | Worker entrypoint for `/health` and `/mcp` |
 | `src/ingest-worker/server.ts` | MCP tool schemas and callbacks |
-| `src/ingest-worker/search.ts` | Search via the `AI_SEARCH` Worker binding, plus legacy R2 prefix retrieval |
+| `src/ingest-worker/search.ts` | Search via the `AI_SEARCH` Worker binding |
 | `src/ingest-worker/ingestion.ts` | Validation, R2 original preservation, and AI Search built-in-storage uploads |
-| `src/ingest-worker/deletion.ts` | Confirmed R2 object and AI Search item deletion |
-| `src/ingest-worker/cloudflare-api.ts` | AI Search binding helpers and REST fallback helpers |
+| `src/ingest-worker/deletion.ts` | Confirmed R2 raw object and AI Search item deletion |
+| `src/ingest-worker/cloudflare-api.ts` | AI Search binding helpers |
 | `src/ingest-worker/auth.ts` | Cloudflare Access service-token check for `/mcp` |
 | `src/ingest-worker/file-utils.ts` | Filename, MIME, Base64, hashing, signing, and text helpers |
 | `src/ingest-worker/config.ts` | MCP constants, limits, accepted values, and MIME hints |

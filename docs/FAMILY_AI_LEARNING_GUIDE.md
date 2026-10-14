@@ -27,7 +27,6 @@ Family AI is now a single MCP-first Cloudflare Worker. The old core HTTP uploade
 ## Things to remember
 
 - New successful uploads no longer need a separate D1 row or queue message.
-- New successful uploads no longer need new `family-index-ready-v3` objects; that bucket remains only for legacy prefix retrieval.
 - AI Search metadata fields are limited, so the active schema uses: `category`, `year`, `person`, `doc_type`, `sensitivity`.
 - Regenerate `worker-configuration.ingest.d.ts` after changing `wrangler.ingest.jsonc`.
 
